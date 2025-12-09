@@ -10,64 +10,74 @@ NUM_RESPUESTAS = 10 # Cuántas veces se desea enviar el formulario
 
 # --- DEFINICIÓN DE PREGUNTAS ---
 # Este formulario tiene 10 preguntas de opción múltiple con 3 opciones cada una [cite: 9-71].
-# La lista usa tuplas: (Índice_Pregunta, Cantidad_Opciones)
+# La lista usa tuplas: (Índice_Pregunta, Cantidad_Opciones, Tipo)
 PREGUNTAS_A_LLENAR = [
-    # Formato de tupla: (Num_Pregunta, Cantidad_Opciones)
-    (1, 3),
-    (2, 3),
-    (3, 3),
-    (4, 3),
-    (5, 3),
-    (6, 3),
-    (7, 3),
-    (8, 3),
-    (9, 3),
-    (10, 3),
+    # Formato de tupla: (Num_Pregunta, Cantidad_Opciones, Tipo)
+    (1, 3, 'radio'),
+    (2, 3, 'radio'),
+    (3, 3, 'radio'),
+    (4, 3, 'radio'),
+    (5, 3, 'checkbox'),
+    (11, 3, 'radio'),
+    (12, 3, 'radio'),
+    (13, 3, 'radio'),
+    (14, 3, 'checkbox'),
+    (15, 3, 'radio'),
 ]
-
 
 def llenar_formulario_aleatorio(driver):
     """Lógica para seleccionar una opción aleatoria para cada pregunta."""
-    
-    # XPath general que busca todos los contenedores de preguntas listados
-    xpath_contenedor_base = "//div[@role='listitem']"
 
-    for indice, (num_opciones_declaradas) in enumerate(PREGUNTAS_A_LLENAR):
-        # El índice de la pregunta en el DOM empieza en 1, por eso usamos (indice + 1)
-        indice_pregunta_dom = indice + 1
-
+    for indice_pregunta, num_opciones, tipo in PREGUNTAS_A_LLENAR:
         try:
-            # 1. Selector de la Pregunta Específica: Busca el contenedor [div] de la pregunta por su posición
-            xpath_pregunta = f"{xpath_contenedor_base}[{indice_pregunta_dom}]"
+            # 1. Selector Base: Busca el contenedor de la pregunta por su índice
+            xpath_contenedor = f"(//form//div[starts-with(@role, 'listitem') or contains(@class, 'fvv-list-item')])[{indice_pregunta}]" 
+            # f"(//div[@role='listitem'])[{indice_pregunta}]"
             
-            # 2. Selector de Opciones: Busca los elementos clickeables (div[@role='radio']) dentro de esa pregunta
-            opciones_clickables = driver.find_elements(By.XPATH, f"{xpath_pregunta}//div[@role='radio']")
+            # 2. SELECTOR RESILIENTE: Busca cualquier elemento que sea una opción clickeable.
+            # Los elementos clickeables en Forms son a menudo div[@role='option'], div[@role='radio'] o div[@role='checkbox']
+            
+            if tipo in ['radio', 'checkbox']:
+                # Intenta buscar el selector más genérico para la opción
+                opciones_clickables = driver.find_elements(By.XPATH, f"{xpath_contenedor}//div[@role='option']")
+                
+                # Si no encuentra 'option', intenta buscar el selector específico (radio o checkbox)
+                if not opciones_clickables:
+                    opciones_clickables = driver.find_elements(By.XPATH, f"{xpath_contenedor}//div[@role='{tipo}']")
+            else:
+                continue
             
             if not opciones_clickables:
-                 raise ValueError("No se encontraron opciones clickeables (radio buttons).")
+                 raise ValueError("No se encontraron elementos clickeables para la pregunta.")
 
             num_opciones_reales = len(opciones_clickables)
             
-            # Verificación de que el número de opciones coincida con el declarado
-            if num_opciones_reales != num_opciones_declaradas:
-                 print(f"Advertencia Q{indice_pregunta_dom}: Esperaba {num_opciones_declaradas} opciones, encontré {num_opciones_reales}. Ajustando.")
-            
             # --- LÓGICA DE ALEATORIEDAD ---
-            # Selecciona un índice aleatorio entre 0 y el número de opciones encontradas
-            indice_aleatorio = random.randint(0, num_opciones_reales - 1)
-            
-            # Simula el clic en el elemento clickeable seleccionado al azar
-            opciones_clickables[indice_aleatorio].click()
-            
-            # Pausa breve entre preguntas para simular tiempo de lectura
-            time.sleep(random.uniform(0.1, 0.3)) 
-            
-            print(f"Q{indice_pregunta_dom}: Seleccionada opción {indice_aleatorio + 1} de {num_opciones_reales}")
+            if tipo == 'checkbox':
+                # Casillas: Marca aleatoriamente algunas
+                seleccionadas = 0
+                for opcion in opciones_clickables:
+                    # 40% de probabilidad de marcar
+                    if random.random() > 0.6: 
+                        opcion.click()
+                        seleccionadas += 1
+                        time.sleep(0.1) 
+                
+                # Para preguntas obligatorias: si no se marcó nada, marca la última opción
+                if seleccionadas == 0 and num_opciones_reales > 0:
+                     opciones_clickables[-1].click()
+                     
+            else:
+                # Opción Múltiple: Selecciona solo una al azar
+                indice_aleatorio = random.randint(0, num_opciones_reales - 1)
+                opciones_clickables[indice_aleatorio].click()
+                time.sleep(random.uniform(0.1, 0.3)) 
+                
+            print(f"Q{indice_pregunta}: Llenado aleatorio (Tipo: {tipo})")
 
         except Exception as e:
-            print(f"Error grave al llenar Q{indice_pregunta_dom}: {type(e).__name__} - {e}")
-            # Continuar con la siguiente pregunta si falla una
-
+            print(f"Error grave al intentar llenar Q{indice_pregunta}: {type(e).__name__} - {e}")
+            continue
 
 def automatizar_envios():
     """Bucle principal para controlar la automatización y evitar el bloqueo."""
