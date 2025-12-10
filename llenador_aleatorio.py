@@ -1,54 +1,75 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import random
 import time
 
 # --- CONFIGURACIÓN ---
 # El link del formulario de prueba (Cambiar por el link del formulario que se desea llenar)
 URL_FORMULARIO = "https://forms.gle/sSrxPmvmyw79YNaa9" 
-NUM_RESPUESTAS = 10 # Cuántas veces se desea enviar el formulario
+NUM_RESPUESTAS = 1 # Cuántas veces se desea enviar el formulario
 
-# --- DEFINICIÓN DE PREGUNTAS ---
-# Este formulario tiene 10 preguntas de opción múltiple con 3 opciones cada una [cite: 9-71].
-# La lista usa tuplas: (Índice_Pregunta, Cantidad_Opciones, Tipo)
-PREGUNTAS_A_LLENAR = [
-    # Formato de tupla: (Num_Pregunta, Cantidad_Opciones, Tipo)
-    (1, 3, 'radio'),
-    (2, 3, 'radio'),
-    (3, 3, 'radio'),
-    (4, 3, 'radio'),
-    (5, 3, 'checkbox'),
-    (11, 3, 'radio'),
-    (12, 3, 'radio'),
-    (13, 3, 'radio'),
-    (14, 3, 'checkbox'),
-    (15, 3, 'radio'),
+# --- DEFINICIÓN DE PREGUNTAS POR PÁGINA ---
+# El formulario tiene 3 páginas. Cada tupla es: (Índice_Relativo, Cantidad_Opciones, Tipo)
+# Índice_Relativo es la posición de la pregunta en ESA página específica (1, 2, 3...)
+
+# Página 1: Preguntas 1-4
+PAGINA_1 = [
+    (1, 3, 'radio'),  # Pregunta 1
+    (2, 3, 'radio'),  # Pregunta 2
+    (3, 3, 'radio'),  # Pregunta 3
 ]
 
-def llenar_formulario_aleatorio(driver):
-    """Lógica para seleccionar una opción aleatoria para cada pregunta."""
+# Página 2: Preguntas 5-7
+PAGINA_2 = [
+    (1, 3, 'radio'),  # Pregunta 4
+    (2, 3, 'checkbox'),  # Pregunta 5
+    (3, 3, 'radio'),     # Pregunta 6
+    (4, 3, 'radio'),     # Pregunta 7
+]
 
-    for indice_pregunta, num_opciones, tipo in PREGUNTAS_A_LLENAR:
+# Página 3: Preguntas 8-10
+PAGINA_3 = [
+    (1, 3, 'radio'),     # Pregunta 8
+    (2, 3, 'checkbox'),  # Pregunta 9
+    (3, 3, 'radio'),     # Pregunta 10
+]
+
+def llenar_preguntas_de_pagina(driver, preguntas, num_pagina):
+    """Lógica para seleccionar una opción aleatoria para cada pregunta de una página específica."""
+    
+    # Esperar a que el formulario esté completamente cargado
+    wait = WebDriverWait(driver, 10)
+    
+    for indice_pregunta, num_opciones, tipo in preguntas:
         try:
-            # 1. Selector Base: Busca el contenedor de la pregunta por su índice
-            xpath_contenedor = f"(//form//div[starts-with(@role, 'listitem') or contains(@class, 'fvv-list-item')])[{indice_pregunta}]" 
-            # f"(//div[@role='listitem'])[{indice_pregunta}]"
+            print(f"  [DEBUG] Buscando pregunta {indice_pregunta} en página {num_pagina}...")
+            
+            # 1. Selector Base SIMPLIFICADO: Busca el contenedor de la pregunta por su índice RELATIVO
+            xpath_contenedor = f"(//div[@role='listitem'])[{indice_pregunta}]"
+            
+            # Esperar a que el contenedor esté presente
+            try:
+                wait.until(EC.presence_of_element_located((By.XPATH, xpath_contenedor)))
+            except:
+                print(f"  [DEBUG] Contenedor no encontrado con XPath: {xpath_contenedor}")
+                # Intentar con el XPath alternativo más amplio
+                xpath_contenedor = f"(//div[@role='listitem' or @role='list'])[{indice_pregunta}]"
             
             # 2. SELECTOR RESILIENTE: Busca cualquier elemento que sea una opción clickeable.
-            # Los elementos clickeables en Forms son a menudo div[@role='option'], div[@role='radio'] o div[@role='checkbox']
+            # Primero intenta con role específico del tipo de pregunta
+            opciones_clickables = driver.find_elements(By.XPATH, f"{xpath_contenedor}//div[@role='{tipo}']")
             
-            if tipo in ['radio', 'checkbox']:
-                # Intenta buscar el selector más genérico para la opción
+            print(f"  [DEBUG] Opciones encontradas con role='{tipo}': {len(opciones_clickables)}")
+            
+            # Si no encuentra con el tipo específico, intenta con 'option' genérico
+            if not opciones_clickables:
                 opciones_clickables = driver.find_elements(By.XPATH, f"{xpath_contenedor}//div[@role='option']")
-                
-                # Si no encuentra 'option', intenta buscar el selector específico (radio o checkbox)
-                if not opciones_clickables:
-                    opciones_clickables = driver.find_elements(By.XPATH, f"{xpath_contenedor}//div[@role='{tipo}']")
-            else:
-                continue
+                print(f"  [DEBUG] Opciones encontradas con role='option': {len(opciones_clickables)}")
             
             if not opciones_clickables:
-                 raise ValueError("No se encontraron elementos clickeables para la pregunta.")
+                raise ValueError("No se encontraron elementos clickeables para la pregunta.")
 
             num_opciones_reales = len(opciones_clickables)
             
@@ -73,11 +94,63 @@ def llenar_formulario_aleatorio(driver):
                 opciones_clickables[indice_aleatorio].click()
                 time.sleep(random.uniform(0.1, 0.3)) 
                 
-            print(f"Q{indice_pregunta}: Llenado aleatorio (Tipo: {tipo})")
+            print(f"Página {num_pagina}, Q{indice_pregunta}: Llenado aleatorio (Tipo: {tipo})")
 
         except Exception as e:
-            print(f"Error grave al intentar llenar Q{indice_pregunta}: {type(e).__name__} - {e}")
+            print(f"Error al llenar Página {num_pagina}, Q{indice_pregunta}: {type(e).__name__} - {e}")
             continue
+
+def hacer_clic_boton_siguiente(driver):
+    """Hace clic en el botón 'Siguiente' para avanzar a la siguiente página."""
+    try:
+        # Buscar el botón "Siguiente" por el texto del span
+        boton_siguiente = driver.find_element(By.XPATH, "//span[text()='Siguiente']")
+        # Encontrar el div padre con role='button' y hacer clic
+        boton_div = boton_siguiente.find_element(By.XPATH, './ancestor::div[@role="button"]')
+        driver.execute_script("arguments[0].click();", boton_div)
+        print("[OK] Boton 'Siguiente' clickeado")
+        # IMPORTANTE: Esperar más tiempo para que el DOM de la nueva página se cargue completamente
+        time.sleep(random.uniform(3, 4))
+        return True
+    except Exception as e:
+        print(f"Error al hacer clic en 'Siguiente': {type(e).__name__} - {e}")
+        return False
+
+def hacer_clic_boton_enviar(driver):
+    """Hace clic en el botón 'Enviar' en la última página."""
+    try:
+        # Buscar el botón "Enviar" por el texto del span
+        boton_enviar = driver.find_element(By.XPATH, "//span[text()='Enviar']")
+        # Encontrar el div padre con role='button' y hacer clic
+        boton_div = boton_enviar.find_element(By.XPATH, './ancestor::div[@role="button"]')
+        driver.execute_script("arguments[0].click();", boton_div)
+        print("[OK] Boton 'Enviar' clickeado")
+        time.sleep(random.uniform(1, 2))
+        return True
+    except Exception as e:
+        print(f"Error al hacer clic en 'Enviar': {type(e).__name__} - {e}")
+        return False
+
+def llenar_formulario_completo(driver):
+    """Llena todas las páginas del formulario."""
+    
+    # PÁGINA 1
+    print("\n=== Llenando Página 1 ===")
+    llenar_preguntas_de_pagina(driver, PAGINA_1, 1)
+    if not hacer_clic_boton_siguiente(driver):
+        raise Exception("No se pudo avanzar de la Página 1")
+    
+    # PÁGINA 2
+    print("\n=== Llenando Página 2 ===")
+    llenar_preguntas_de_pagina(driver, PAGINA_2, 2)
+    if not hacer_clic_boton_siguiente(driver):
+        raise Exception("No se pudo avanzar de la Página 2")
+    
+    # PÁGINA 3
+    print("\n=== Llenando Página 3 ===")
+    llenar_preguntas_de_pagina(driver, PAGINA_3, 3)
+    if not hacer_clic_boton_enviar(driver):
+        raise Exception("No se pudo enviar el formulario")
 
 def automatizar_envios():
     """Bucle principal para controlar la automatización y evitar el bloqueo."""
@@ -93,36 +166,35 @@ def automatizar_envios():
 
     for i in range(NUM_RESPUESTAS):
         try:
+            print(f"\n{'='*60}")
+            print(f"ENVÍO {i + 1} DE {NUM_RESPUESTAS}")
+            print(f"{'='*60}")
+            
             # 1. Abrir el formulario y maximizar (opcional)
             driver.get(URL_FORMULARIO)
-            driver.maximize_window()
+            # driver.maximize_window()
             time.sleep(random.uniform(2, 4)) 
 
-            # 2. Llenar todas las preguntas aleatoriamente
-            llenar_formulario_aleatorio(driver)
+            # 2. Llenar todas las páginas del formulario
+            llenar_formulario_completo(driver)
 
-            # 3. Encontrar y hacer clic en el botón de Enviar
-            # Buscamos el texto 'Enviar' dentro de un botón genérico
-            boton_enviar = driver.find_element(By.XPATH, "//span[text()='Enviar']")
-            
-            # Usamos JavaScript para hacer clic, ya que es más confiable que el clic nativo de Selenium
-            driver.execute_script("arguments[0].click();", boton_enviar.find_element(By.XPATH, './ancestor::div[@role="button"]'))
-            
-            print(f"Envío {i + 1} de {NUM_RESPUESTAS} completado.")
+            print(f"\n[OK] Envio {i + 1} de {NUM_RESPUESTAS} completado exitosamente.")
 
-            # 4. PAUSA ANTIDETECCIÓN (CRUCIAL)
+            # 3. PAUSA ANTIDETECCIÓN (CRUCIAL)
             pausa_aleatoria = random.randint(10, 25)
-            print(f"Esperando {pausa_aleatoria} segundos para simular tiempo de lectura...")
+            print(f"[WAIT] Esperando {pausa_aleatoria} segundos para simular tiempo de lectura...")
             time.sleep(pausa_aleatoria)
 
         except Exception as e:
-            print(f"Error grave durante el ciclo {i + 1}: {type(e).__name__} - {e}")
+            print(f"\n[ERROR] Error grave durante el envio {i + 1}: {type(e).__name__} - {e}")
             # Si el formulario falla, esperamos más tiempo antes de reintentar
             time.sleep(30)
             continue
             
     driver.quit()
-    print("Proceso de automatización finalizado.")
+    print("\n" + "="*60)
+    print("[OK] Proceso de automatizacion finalizado.")
+    print("="*60)
 
 if __name__ == "__main__":
     automatizar_envios()
