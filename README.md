@@ -91,7 +91,7 @@ El script utiliza un algoritmo de decisión para interactuar con los elementos d
 graph TD
     A[Inicio] --> B{¿Botones en Pantalla?}
     B -->|Radio| C[Seleccionar 1 Opción]
-    B -->|Checkbox| D[Seleccionar Subconjunto (1 a N-1)]
+    B -->|Checkbox| D[Seleccionar Subconjunto \(1 a N-1\)]
     B -->|Siguiente| E[Clic 'Siguiente']
     E --> B
     B -->|Enviar| F[Clic 'Enviar']
